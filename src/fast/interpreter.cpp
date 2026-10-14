@@ -10,6 +10,9 @@
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
+#ifdef __EMSCRIPTEN__
+#include <emscripten/heap.h>
+#endif
 
 #include <any>
 #include <map>
@@ -3964,6 +3967,11 @@ bool gfx_othermode_h_handler_f3d(F3DGfx** cmd0) {
 // failed to resolve it (segment not set up). Keep it only if it belongs to a loaded module,
 // where it's a real low pointer (e.g. a static TLUT) rather than an unresolved segment addr.
 static bool IsValidResolvedAddress(uintptr_t addr) {
+#ifdef __EMSCRIPTEN__
+    // All of wasm linear memory is one module and real pointers can be low, so an unresolved segment address is
+    // recognised by its tag bit instead.
+    return (addr & 1) == 0 && addr < emscripten_get_heap_size();
+#endif
     if (addr > 0x0FFFFFFF) {
         return true;
     }
@@ -4896,6 +4904,9 @@ static void gfx_step() {
 #if UINTPTR_MAX > 0xFFFFFFFFu
                 // On 64-bit: filter kernel/sentinel addresses.
                 || w1 > 0x0000FFFFFFFFFFFFull
+#elif defined(__EMSCRIPTEN__)
+                // On wasm: filter addresses outside linear memory.
+                || w1 >= emscripten_get_heap_size()
 #endif
             ) {
                 ++g_exec_stack.currCmd();
@@ -5339,6 +5350,11 @@ int32_t gfx_check_image_signature(const char* imgData) {
     // On 64-bit: filter kernel/sentinel addresses. Upper bound covers all
     // user-space layouts (x86_64 47-bit canonical, ARM64 48-bit VA, etc.).
     if (i > 0x0000FFFFFFFFFFFFull) {
+        return 0;
+    }
+#elif defined(__EMSCRIPTEN__)
+    // On wasm: filter addresses outside linear memory.
+    if (i + 7 >= emscripten_get_heap_size()) {
         return 0;
     }
 #endif

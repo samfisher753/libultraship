@@ -63,7 +63,7 @@ Context::~Context() {
     mConfig = nullptr;
     mLogger->flush();
     mLogger = nullptr;
-#ifndef _DEBUG
+#if (!defined(_DEBUG)) && (!defined(__EMSCRIPTEN__))
     mLogThreadPool = nullptr;
 #endif
 }
@@ -124,8 +124,10 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
     }
 
     try {
+#ifndef __EMSCRIPTEN__
         // Setup Logging
         spdlog::init_thread_pool(8192, 1);
+#endif
         std::vector<spdlog::sink_ptr> sinks;
 
 #if (!defined(_WIN32)) || defined(_DEBUG)
@@ -173,9 +175,14 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
         GetLogger()->set_level(debugBuildLogLevel);
         GetLogger()->flush_on(spdlog::level::trace);
 #else
+#ifndef __EMSCRIPTEN__
         mLogThreadPool = std::make_shared<spdlog::details::thread_pool>(8192, 1);
         mLogger = std::make_shared<spdlog::async_logger>(GetName(), sinks.begin(), sinks.end(), mLogThreadPool,
                                                          spdlog::async_overflow_policy::block);
+#else
+        // No threads on the web build, so log synchronously.
+        mLogger = std::make_shared<spdlog::logger>(GetName(), sinks.begin(), sinks.end());
+#endif
         GetLogger()->set_level(releaseBuildLogLevel);
         GetLogger()->flush_on(spdlog::level::info);
 #endif

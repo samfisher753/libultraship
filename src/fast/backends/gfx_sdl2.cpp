@@ -15,6 +15,9 @@
 #include "ship/controller/controldeck/ControlDeck.h"
 #include "ship/window/FileDropMgr.h"
 #include "fast/backends/gfx_sdl.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 #ifdef __OpenBSD__
 #include <sys/sysctl.h>
@@ -273,7 +276,38 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     }
 }
 
+#ifdef __EMSCRIPTEN__
+// SDL doesn't know the display refresh rate on the web, so measure how often the browser fires requestAnimationFrame
+// (median of the last 60 intervals; 0 until there are enough samples).
+EM_JS(int, gfx_sdl_web_refresh_rate, (), {
+    if (!Module.lusRefreshRate) {
+        const state = Module.lusRefreshRate = { rate: 0, last: 0, intervals: [] };
+        const tick = (now) => {
+            if (state.last) {
+                state.intervals.push(now - state.last);
+                if (state.intervals.length > 60) {
+                    state.intervals.shift();
+                }
+            }
+            state.last = now;
+            if (state.intervals.length >= 30) {
+                const sorted = [...state.intervals].sort((a, b) => a - b);
+                state.rate = Math.round(1000 / sorted[sorted.length >> 1]);
+            }
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+    return Module.lusRefreshRate.rate;
+});
+#endif
+
 void GfxWindowBackendSDL2::GetActiveWindowRefreshRate(uint32_t* refresh_rate) {
+#ifdef __EMSCRIPTEN__
+    int webRefreshRate = gfx_sdl_web_refresh_rate();
+    *refresh_rate = webRefreshRate > 0 ? webRefreshRate : 60;
+    return;
+#endif
     int display_in_use = SDL_GetWindowDisplayIndex(mWnd);
 
     SDL_DisplayMode mode;
@@ -350,6 +384,10 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+#elif defined(__EMSCRIPTEN__)
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
 #endif
 
 #ifdef _WIN32
@@ -695,6 +733,9 @@ static uint64_t qpc_to_100ns(uint64_t qpc) {
 }
 
 void GfxWindowBackendSDL2::SyncFramerateWithTime() const {
+#ifdef __EMSCRIPTEN__
+    return;
+#endif
     uint64_t t = qpc_to_100ns(SDL_GetPerformanceCounter());
 
     const int64_t next = previous_time + 10 * FRAME_INTERVAL_US_NUMERATOR / FRAME_INTERVAL_US_DENOMINATOR;
@@ -774,6 +815,10 @@ const char* GfxWindowBackendSDL2::GetKeyName(int scancode) {
 }
 
 bool GfxWindowBackendSDL2::CanDisableVsync() {
+#ifdef __EMSCRIPTEN__
+    // Browsers always present in sync with the display.
+    return false;
+#endif
     return true;
 }
 

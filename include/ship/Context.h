@@ -274,7 +274,7 @@ class Context {
 
     std::shared_ptr<spdlog::logger> mLogger;
     // We only need the spdlog threadpool on release builds because of the async logger.
-#ifndef _DEBUG
+#if (!defined(_DEBUG)) && (!defined(__EMSCRIPTEN__))
     std::shared_ptr<spdlog::details::thread_pool> mLogThreadPool;
 #endif
     std::shared_ptr<Config> mConfig;
