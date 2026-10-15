@@ -167,9 +167,11 @@ bool Context::InitLogging(spdlog::level::level_enum debugBuildLogLevel,
         sinks.push_back(systemConsoleSink);
 #endif
 
+#ifndef __EMSCRIPTEN__ // On the web the app directory is persisted to IndexedDB; logs go to the browser console.
         auto logPath = GetPathRelativeToAppDirectory(("logs/" + GetName() + ".log"));
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(logPath, 1024 * 1024 * 10, 10);
         sinks.push_back(fileSink);
+#endif
 #ifdef _DEBUG
         mLogger = std::make_shared<spdlog::logger>("multi_sink", sinks.begin(), sinks.end());
         GetLogger()->set_level(debugBuildLogLevel);
@@ -569,6 +571,11 @@ std::string Context::GetAppDirectoryPath(const std::string& appName) {
         }
         return std::string(fpath);
     }
+#endif
+
+#ifdef __EMSCRIPTEN__
+    // IndexedDB-backed mount set up by the page before main() runs.
+    return "/data";
 #endif
 
 #if defined(__linux__)
