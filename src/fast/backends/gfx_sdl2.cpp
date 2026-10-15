@@ -214,6 +214,21 @@ const SDL_Scancode scancode_rmapping_nonextended[][2] = { { SDL_SCANCODE_KP_7, S
                                                           { SDL_SCANCODE_KP_PERIOD, SDL_SCANCODE_DELETE },
                                                           { SDL_SCANCODE_KP_MULTIPLY, SDL_SCANCODE_PRINTSCREEN } };
 
+#ifdef __EMSCRIPTEN__
+// Fullscreen the whole page instead of letting SDL resize the canvas: the canvas is sized by CSS to fill the page, so
+// the regular resize path keeps working. Browsers only allow this shortly after a click or key press, which is when the
+// menu button and the fullscreen shortcut call it.
+EM_JS(void, gfx_sdl_web_set_fullscreen, (bool on), {
+    const request = on ? (document.fullscreenElement ? null : document.documentElement.requestFullscreen())
+                       : (document.fullscreenElement ? document.exitFullscreen() : null);
+    if (request) {
+        request.catch((e) => console.warn("Fullscreen change refused: " + e.message));
+    }
+});
+
+EM_JS(bool, gfx_sdl_web_is_fullscreen, (), { return !!document.fullscreenElement; });
+#endif
+
 GfxWindowBackendSDL2::~GfxWindowBackendSDL2() {
 }
 
@@ -221,6 +236,12 @@ void GfxWindowBackendSDL2::SetFullscreenImpl(bool on, bool call_callback) {
     if (mFullScreen == on) {
         return;
     }
+
+#ifdef __EMSCRIPTEN__
+    // The actual state is resynced from the browser in HandleEvents (the request is async and may be refused).
+    gfx_sdl_web_set_fullscreen(on);
+    return;
+#endif
 
     int display_in_use = SDL_GetWindowDisplayIndex(mWnd);
     if (display_in_use < 0) {
@@ -712,8 +733,13 @@ void GfxWindowBackendSDL2::HandleEvents() {
     }
 
     // resync fullscreen state
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
 #ifdef __APPLE__
     auto nextFullscreenState = isNativeMacOSFullscreenActive(mWnd);
+#else
+    // Also catches leaving fullscreen with Esc or the browser UI.
+    bool nextFullscreenState = gfx_sdl_web_is_fullscreen();
+#endif
     if (mFullScreen != nextFullscreenState) {
         mFullScreen = nextFullscreenState;
         if (mOnFullscreenChanged != nullptr) {
