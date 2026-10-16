@@ -1,0 +1,75 @@
+Web (Emscripten) builds have no threads: run pool tasks synchronously on the calling thread instead of on workers.
+
+diff --git a/include/BS_thread_pool.hpp b/include/BS_thread_pool.hpp
+index 984fc36..6271fd3 100644
+--- a/include/BS_thread_pool.hpp
++++ b/include/BS_thread_pool.hpp
+@@ -458,11 +458,15 @@ public:
+     template <typename F>
+     void detach_task(F&& task BS_THREAD_POOL_PRIORITY_INPUT)
+     {
++#ifdef __EMSCRIPTEN__
++        task();
++#else
+         {
+             const std::scoped_lock tasks_lock(tasks_mutex);
+             tasks.emplace(std::forward<F>(task) BS_THREAD_POOL_PRIORITY_OUTPUT);
+         }
+         task_available_cv.notify_one();
++#endif
+     }
+ 
+     /**
+@@ -760,6 +764,9 @@ public:
+      */
+     void wait()
+     {
++#ifdef __EMSCRIPTEN__
++        return;
++#else
+ #ifdef BS_THREAD_POOL_ENABLE_WAIT_DEADLOCK_CHECK
+         if (this_thread::get_pool() == this)
+             throw wait_deadlock();
+@@ -772,6 +779,7 @@ public:
+                 return (tasks_running == 0) && BS_THREAD_POOL_PAUSED_OR_EMPTY;
+             });
+         waiting = false;
++#endif
+     }
+ 
+     /**
+@@ -856,6 +864,13 @@ private:
+      */
+     void create_threads(const std::function<void()>& init_task)
+     {
++#ifdef __EMSCRIPTEN__
++        {
++            const std::scoped_lock tasks_lock(tasks_mutex);
++            tasks_running = 0;
++            workers_running = true;
++        }
++#else
+         {
+             const std::scoped_lock tasks_lock(tasks_mutex);
+             tasks_running = thread_count;
+@@ -865,6 +880,7 @@ private:
+         {
+             threads[i] = std::thread(&thread_pool::worker, this, i, init_task);
+         }
++#endif
+     }
+ 
+     /**
+@@ -877,10 +893,12 @@ private:
+             workers_running = false;
+         }
+         task_available_cv.notify_all();
++#ifndef __EMSCRIPTEN__
+         for (concurrency_t i = 0; i < thread_count; ++i)
+         {
+             threads[i].join();
+         }
++#endif
+     }
+ 
+     /**

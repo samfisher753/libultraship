@@ -94,10 +94,16 @@ if (GFX_DEBUG_DISASSEMBLER)
 endif()
 
 #======== thread-pool ========
+set(threadpool_apply_patch_command)
+if(EMSCRIPTEN)
+    set(threadpool_patch_file ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/patches/thread-pool-emscripten.patch)
+    set(threadpool_apply_patch_command PATCH_COMMAND ${CMAKE_COMMAND} -Dpatch_file=${threadpool_patch_file} -Dwith_reset=TRUE -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/dependencies/git-patch.cmake)
+endif()
 FetchContent_Declare(
     ThreadPool
     GIT_REPOSITORY https://github.com/bshoshany/thread-pool.git
     GIT_TAG v4.1.0
+    ${threadpool_apply_patch_command}
 )
 FetchContent_MakeAvailable(ThreadPool)
 
