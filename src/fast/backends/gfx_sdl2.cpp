@@ -444,7 +444,12 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
         flags = flags | SDL_WINDOW_METAL;
     }
 
+#ifdef __EMSCRIPTEN__
+    // SDL would set it as the page title; keep the page's own instead.
+    mWnd = SDL_CreateWindow(nullptr, posX, posY, mWindowWidth, mWindowHeight, flags);
+#else
     mWnd = SDL_CreateWindow(title, posX, posY, mWindowWidth, mWindowHeight, flags);
+#endif
 #ifdef _WIN32
     // Get Windows window handle and use it to subclass the window procedure.
     // Needed to circumvent SDLs DPI scaling problems under windows (original does only scale *sometimes*).
