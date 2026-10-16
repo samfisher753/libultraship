@@ -614,6 +614,13 @@ std::string Context::LocateFileAcrossAppDirs(const std::string& path, const std:
     if (std::filesystem::exists(fpath)) {
         return fpath;
     }
+#ifdef __EMSCRIPTEN__
+    // ROM assets extracted in the browser (an IndexedDB-backed mount set up by the page).
+    fpath = "/assets/" + path;
+    if (std::filesystem::exists(fpath)) {
+        return fpath;
+    }
+#endif
     // app install dir
     fpath = GetPathRelativeToAppBundle(path);
     if (std::filesystem::exists(fpath)) {
